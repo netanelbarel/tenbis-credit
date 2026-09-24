@@ -20,6 +20,8 @@ Move today's leftover now? (y/n) [y]:
 ✓ Moved 35 ₪ from card …1234 to 10bis Credit
 ```
 
+📖 **Full guide:** [the wiki](https://github.com/netanelbarel/tenbis-credit/wiki) covers setup, budget types, settings, troubleshooting and security. [מדריך בעברית](https://github.com/netanelbarel/tenbis-credit/wiki/%D7%9E%D7%93%D7%A8%D7%99%D7%9A-%D7%91%D7%A2%D7%91%D7%A8%D7%99%D7%AA).
+
 > **Unofficial.** Not made by or affiliated with 10bis. 10bis has no public API: this tool
 > uses the same private endpoints the 10bis website uses, and 10bis can change them at any
 > time. Use it only with your own account, at your own risk.
