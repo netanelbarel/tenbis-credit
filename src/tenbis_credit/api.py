@@ -44,6 +44,31 @@ class Card:
     encrypted_id: str
     suffix: str
     available: float
+    # Company-set limits in ₪; 0 means that period has no limit.
+    daily_limit: float = 0
+    weekly_limit: float = 0
+    monthly_limit: float = 0
+    auto_credit_offered: bool = False  # 10bis's own automatic transfer
+    auto_credit_on: bool = False
+
+    @property
+    def period(self) -> str:
+        """How often this card's budget resets: daily, weekly or monthly.
+
+        Companies differ. Unknown setups count as monthly, the safest choice:
+        a monthly budget moved every evening would leave nothing for meals.
+        """
+        if self.daily_limit > 0:
+            return "daily"
+        if self.weekly_limit > 0:
+            return "weekly"
+        return "monthly"
+
+    def describe(self) -> str:
+        limit = {"daily": self.daily_limit, "weekly": self.weekly_limit,
+                 "monthly": self.monthly_limit}[self.period]
+        budget = f"{self.period} budget {limit:g} ₪" if limit else f"{self.period} budget"
+        return f"Card …{self.suffix} ({budget}): {self.available:g} ₪ available to move to Credit"
 
 
 def format_amount(amount: float) -> str:
@@ -137,8 +162,18 @@ class Client:
             conv = c.get("tenbisCreditConversion") or {}
             if c.get("isTenbisCredit") or c.get("cardDeleted") or not conv.get("isEnabled"):
                 continue
-            cards.append(Card(c["encryptedMoneycardID"], str(c.get("cardSuffix", "")),
-                              float(conv.get("availableAmount") or 0)))
+            limits = c.get("limitation") or {}
+            settings = conv.get("tenbisCreditSettings") or {}
+            cards.append(Card(
+                c["encryptedMoneycardID"], str(c.get("cardSuffix", "")),
+                float(conv.get("availableAmount") or 0),
+                daily_limit=float(limits.get("daily") or 0),
+                weekly_limit=float(limits.get("weekly") or 0),
+                monthly_limit=float(limits.get("monthly") or 0),
+                # Same rules the website uses to show its auto-credit toggle.
+                auto_credit_offered=bool(settings) and not settings.get("disableAutoCreditOption"),
+                auto_credit_on=bool(settings.get("autoCreditSubscribed")),
+            ))
         return cards
 
     def load_credit(self, card: Card, amount: float):

@@ -24,13 +24,26 @@ def ask(prompt: str, default: str = "") -> str:
     return input(shown).strip() or default
 
 
-def print_cards(c: Client):
+WHEN = {"daily": "every scheduled evening",
+        "weekly": "on the last scheduled day of each week",
+        "monthly": "on the last scheduled day of each month"}
+
+
+def print_cards(c: Client, cfg: dict):
     cards = c.convertible_cards()
     if not cards:
         print("  No card on this account allows moving budget to 10bis Credit.")
         print("  (Your employer controls this in 10bis. Check the app under your card.)")
     for card in cards:
-        print(f"  Card …{card.suffix}: {card.available:g} ₪ available to move to Credit")
+        print("  " + card.describe())
+        if card.auto_credit_on:
+            print("    10bis automatic credit is already on for this card, so this tool leaves it alone.")
+            continue
+        period = "monthly" if cfg["mode"] == "monthly" else card.period
+        print(f"    Will be moved {WHEN[period]}.")
+        if card.auto_credit_offered:
+            print("    Tip: your company offers 10bis's own automatic credit for this card.")
+            print("    Turning it on in the 10bis app is the official way, and needs no computer.")
     return cards
 
 
@@ -70,7 +83,7 @@ def do_login(cfg: dict, email: str | None, code: str | None) -> bool:
 
 def cmd_login(args, cfg):
     if do_login(cfg, args.email, args.code):
-        print_cards(client(cfg))
+        print_cards(client(cfg), cfg)
 
 
 # ---------- setup ----------
@@ -79,20 +92,25 @@ def cmd_setup(args, cfg):
     print("tenbis-credit setup — moves your unused 10bis budget into 10bis Credit.\n")
     if not do_login(cfg, args.email, None):
         return
-    cards = print_cards(client(cfg))
+    cards = print_cards(client(cfg), cfg)
     if not cards:
         return
 
     print("\nWhen should it run? Budgets reset at midnight, so pick an evening time.")
-    cfg["mode"] = ask("Mode: 'daily' (every work day) or 'monthly' (last work day only)", cfg["mode"])
+    print("Mode 'auto' moves each card when its budget is about to reset (daily, weekly or")
+    print("monthly, as your company set it). 'monthly' waits for the month's last work day.")
+    cfg["mode"] = ask("Mode: 'auto' or 'monthly'", cfg["mode"])
     cfg["days"] = [d.strip().lower()[:3] for d in
-                   ask("Days", ",".join(cfg["days"])).split(",") if d.strip()]
+                   ask("Work days", ",".join(cfg["days"])).split(",") if d.strip()]
     cfg["time"] = ask("Time (HH:MM, 24h)", cfg["time"])
     config.save(cfg)
     print(f"✓ {scheduler.install(cfg)}")
 
-    if any(c.available >= cfg["min_amount"] for c in cards) and ask("Move today's leftover now? (y/n)", "y") == "y":
-        _run_and_report(cfg, dry_run=False, force=True)
+    today = dt.date.today()
+    due_now = [c for c in cards if runner.card_due(c, cfg, today)[0] and c.available >= cfg["min_amount"]]
+    if (due_now and runner.scheduled_today(cfg, today)[0]
+            and ask("Move today's leftover now? (y/n)", "y") == "y"):
+        _run_and_report(cfg, dry_run=False, force=False)
     print("\nDone. Check anytime with `tenbis-credit status`.")
 
 
@@ -144,7 +162,7 @@ def cmd_status(args, cfg):
         print(f"  session:  valid until {expiry:%d/%m/%Y} (renewed on every run)")
     if cfg["email"]:
         try:
-            print_cards(c)
+            print_cards(c, cfg)
         except SessionExpired:
             print("  10bis login expired. Run: tenbis-credit login")
         except TenbisError as e:

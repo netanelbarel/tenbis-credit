@@ -9,9 +9,13 @@ DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]  # index == date.weekda
 
 DEFAULTS = {
     "email": "",
-    # "daily": move the leftover on every scheduled day.
-    # "monthly": move only on the last scheduled day of the month.
-    "mode": "daily",
+    # "auto": follow each card's budget type (companies differ): a daily budget
+    #   moves every scheduled day, a weekly one on the last scheduled day of the
+    #   week, a monthly one on the last scheduled day of the month.
+    # "monthly": move every card only on the last scheduled day of the month.
+    # ("daily", the 0.1.x default, means "auto": a monthly budget is never
+    #   moved daily, which would leave nothing for meals.)
+    "mode": "auto",
     "days": ["sun", "mon", "tue", "wed", "thu"],
     "time": "22:00",
     "min_amount": 1.0,
@@ -63,6 +67,8 @@ def load() -> dict:
     # Only full URLs count as overrides (older versions stored relative paths).
     cfg["endpoints"] = {k: v for k, v in (cfg["endpoints"] or {}).items()
                         if isinstance(v, str) and v.startswith("https://")}
+    if cfg["mode"] == "daily":
+        cfg["mode"] = "auto"
     validate(cfg)
     return cfg
 
@@ -73,8 +79,8 @@ def save(cfg: dict):
 
 
 def validate(cfg: dict):
-    if cfg["mode"] not in ("daily", "monthly"):
-        raise ValueError(f"mode must be 'daily' or 'monthly', not {cfg['mode']!r}")
+    if cfg["mode"] not in ("auto", "daily", "monthly"):
+        raise ValueError(f"mode must be 'auto' or 'monthly', not {cfg['mode']!r}")
     bad = [d for d in cfg["days"] if d not in DAYS]
     if bad or not cfg["days"]:
         raise ValueError(f"days must be a non-empty list from {DAYS}, got {cfg['days']}")

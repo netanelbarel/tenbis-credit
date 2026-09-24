@@ -17,10 +17,13 @@ def report(*cards):
     return {"Success": True, "Errors": [], "Data": {"moneycards": list(cards)}}
 
 
-def card(available, suffix="1234", enc="ENC1", credit=False, enabled=True):
+def card(available, suffix="1234", enc="ENC1", credit=False, enabled=True,
+         daily=100, weekly=0, monthly=2300, settings=None):
     return {"isTenbisCredit": credit, "cardDeleted": False, "cardSuffix": suffix,
             "encryptedMoneycardID": enc,
-            "tenbisCreditConversion": {"isEnabled": enabled, "availableAmount": available}}
+            "limitation": {"daily": daily, "weekly": weekly, "monthly": monthly},
+            "tenbisCreditConversion": {"isEnabled": enabled, "availableAmount": available,
+                                       "tenbisCreditSettings": settings}}
 
 
 class FakeResponse(io.BytesIO):
@@ -79,6 +82,56 @@ class Cards(unittest.TestCase):
         self.assertEqual([(x.suffix, x.available) for x in cards], [("1234", 35.0)])
 
 
+class BudgetTypes(unittest.TestCase):
+    """Companies set budgets differently; each card moves when its budget resets."""
+
+    def test_period_from_company_limits(self):
+        self.assertEqual(api.Card("E", "1", 0, daily_limit=100, monthly_limit=2300).period, "daily")
+        self.assertEqual(api.Card("E", "1", 0, weekly_limit=500).period, "weekly")
+        self.assertEqual(api.Card("E", "1", 0, monthly_limit=1500).period, "monthly")
+        self.assertEqual(api.Card("E", "1", 0).period, "monthly")  # unknown -> safest
+
+    def test_parses_limits_and_auto_credit(self):
+        settings = {"disableAutoCreditOption": False, "autoCreditSubscribed": True}
+        c, _ = make_client({api.ENDPOINTS["report"]: [report(card(35, daily=0, weekly=400, settings=settings))]})
+        (parsed,) = c.convertible_cards()
+        self.assertEqual((parsed.period, parsed.weekly_limit), ("weekly", 400))
+        self.assertTrue(parsed.auto_credit_offered and parsed.auto_credit_on)
+
+    def test_monthly_budget_not_moved_mid_month(self):
+        monthly_card = api.Card("E", "1", 1200, monthly_limit=1500)
+        self.assertFalse(runner.card_due(monthly_card, CFG, THURSDAY)[0])  # Sep 24
+        self.assertTrue(runner.card_due(monthly_card, CFG, dt.date(2026, 9, 30))[0])  # last work day
+
+    def test_weekly_budget_moved_on_thursday(self):
+        weekly_card = api.Card("E", "1", 300, weekly_limit=500)
+        self.assertFalse(runner.card_due(weekly_card, CFG, dt.date(2026, 9, 22))[0])  # Tuesday
+        self.assertTrue(runner.card_due(weekly_card, CFG, THURSDAY)[0])
+
+    def test_leaves_cards_with_10bis_auto_credit_alone(self):
+        self.assertFalse(runner.card_due(api.Card("E", "1", 35, daily_limit=100, auto_credit_on=True),
+                                         CFG, THURSDAY)[0])
+
+    def test_force_cannot_empty_a_monthly_budget_early(self):
+        routes = {api.ENDPOINTS["refresh"]: [None],
+                  api.ENDPOINTS["report"]: [report(card(1200, daily=0, monthly=1500))]}
+        c, opener = make_client(routes)
+        events = runner.run(c, CFG, force=True, today=FRIDAY)
+        self.assertEqual(events[0]["action"], "skip")
+        self.assertFalse(any("LoadTenbisCredit" in r[1] for r in opener.requests))
+
+    def test_mixed_cards_move_independently(self):
+        routes = {api.ENDPOINTS["refresh"]: [None],
+                  api.ENDPOINTS["report"]: [report(card(35), card(900, "9999", "ENC9", daily=0, monthly=1500)),
+                                            report(card(0), card(900, "9999", "ENC9", daily=0, monthly=1500))],
+                  api.ENDPOINTS["load_credit"]: [None]}
+        c, opener = make_client(routes)
+        events = runner.run(c, CFG, today=THURSDAY)
+        self.assertEqual([(e["card"], e["action"]) for e in events], [("1234", "moved"), ("9999", "skip")])
+        loads = [r[2] for r in opener.requests if "LoadTenbisCredit" in r[1]]
+        self.assertEqual(loads, [{"amount": "35", "encryptedMoneycardIdToCharge": "ENC1"}])
+
+
 class Schedule(unittest.TestCase):
     def test_skips_unscheduled_days(self):
         self.assertTrue(runner.scheduled_today(CFG, THURSDAY)[0])
@@ -87,9 +140,16 @@ class Schedule(unittest.TestCase):
     def test_monthly_uses_last_scheduled_day(self):
         # Oct 2026 ends Sat 31; Fri 30 is not a work day -> Thu 29.
         self.assertEqual(runner.last_scheduled_day(dt.date(2026, 10, 5), CFG["days"]), dt.date(2026, 10, 29))
+        daily_card = api.Card("E", "1", 35, daily_limit=100)
         monthly = {**CFG, "mode": "monthly"}
-        self.assertFalse(runner.scheduled_today(monthly, dt.date(2026, 10, 28))[0])
-        self.assertTrue(runner.scheduled_today(monthly, dt.date(2026, 10, 29))[0])
+        self.assertFalse(runner.card_due(daily_card, monthly, dt.date(2026, 10, 28))[0])
+        self.assertTrue(runner.card_due(daily_card, monthly, dt.date(2026, 10, 29))[0])
+
+    def test_week_ends_on_last_work_day(self):
+        sunday, thursday = dt.date(2026, 9, 20), dt.date(2026, 9, 24)
+        for day in (sunday, thursday):
+            self.assertEqual(runner.last_scheduled_day_of_week(day, CFG["days"]), thursday)
+        self.assertEqual(runner.last_scheduled_day_of_week(sunday, ["sun", "mon"]), dt.date(2026, 9, 21))
 
     def test_cron_line(self):
         line = scheduler.cron_line(CFG)
@@ -213,6 +273,10 @@ class LoginPrompt(unittest.TestCase):
 
 
 class Config(unittest.TestCase):
+    def test_old_daily_mode_means_auto(self):
+        config.write_private(config.config_path(), json.dumps({"mode": "daily"}))
+        self.assertEqual(config.load()["mode"], "auto")
+
     def test_rejects_bad_values(self):
         for bad in ({"mode": "hourly"}, {"days": ["funday"]}, {"time": "25:00"}):
             with self.assertRaises(ValueError):

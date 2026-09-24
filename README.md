@@ -10,9 +10,10 @@ $ tenbis-credit setup
 Your 10bis email: dana@example.com
 Enter the code 10bis sent you by SMS: 48213
 ✓ Logged in as dana@example.com
-  Card …1234: 35 ₪ available to move to Credit
-Mode: 'daily' (every work day) or 'monthly' (last work day only) [daily]:
-Days [sun,mon,tue,wed,thu]:
+  Card …1234 (daily budget 100 ₪): 35 ₪ available to move to Credit
+    Will be moved every scheduled evening.
+Mode: 'auto' or 'monthly' [auto]:
+Work days [sun,mon,tue,wed,thu]:
 Time (HH:MM, 24h) [22:00]:
 ✓ launchd job io.github.tenbis-credit: Sun/Mon/Tue/Wed/Thu at 22:00
 Move today's leftover now? (y/n) [y]:
@@ -57,9 +58,24 @@ From source: `pipx install git+https://github.com/netanelbarel/tenbis-credit`.
    cookies are saved in your profile, readable only by you, and never sent anywhere but 10bis.
 2. **Every run** first renews the session (as the website does), so you don't have to log
    in again as long as it runs regularly.
-3. It reads how much each card may move to Credit today (`availableAmount`), and moves
-   all of it, up to `max_amount_per_run`.
+3. It reads how much each card may move to Credit (`availableAmount`), and moves all of
+   it, up to `max_amount_per_run`, when that card's budget is about to reset (below).
 4. You get a desktop notification for every move, and if the login expired.
+
+### Every company sets budgets differently
+
+The amount and the budget type come from 10bis for each card, as your employer set them:
+
+| Your card's budget | When it's moved (mode `auto`) |
+|---|---|
+| Daily limit (e.g. 100 ₪ a day) | Every scheduled evening |
+| Weekly limit, no daily limit | On the last work day of the week (Thursday by default) |
+| Monthly budget only | On the last work day of the month |
+
+A monthly or weekly budget is never moved early, since that would leave nothing for
+meals. Not even `run --force` does it. Setup and `status` show what was detected for each
+card. If your company offers **10bis's own automatic credit** for a card, setup says so:
+turning that on in the app is the official way. Cards that already have it on are left alone.
 
 Scheduling uses the OS's own scheduler: **launchd** on macOS, **cron** on Linux and
 **Task Scheduler** on Windows. There's no background process of its own.
@@ -70,7 +86,7 @@ Scheduling uses the OS's own scheduler: **launchd** on macOS, **cron** on Linux 
 
 | Key | Default | Meaning |
 |---|---|---|
-| `mode` | `daily` | `daily`: every scheduled day. `monthly`: only the last scheduled day of the month |
+| `mode` | `auto` | `auto`: each card by its budget type (above). `monthly`: every card only on the last scheduled day of the month. (`daily` from 0.1.x means `auto`.) |
 | `days` | `sun`…`thu` | Days to run (`mon tue wed thu fri sat sun`) |
 | `time` | `22:00` | Local time to run. Keep it before midnight |
 | `max_amount_per_run` | `1000` | Safety cap per card per run, in ₪ |
@@ -83,7 +99,7 @@ Run history: `~/.local/state/tenbis-credit/log.jsonl` (Windows: `%LOCALAPPDATA%\
 
 ## בעברית בקצרה
 
-הכלי מעביר כל ערב (א׳–ה׳, 22:00) את יתרת התקציב היומית בתן ביס לתן ביס קרדיט, כדי שהיתרה לא תאבד.
+הכלי מעביר את יתרת התקציב בתן ביס לתן ביס קרדיט, כדי שהיתרה לא תאבד. תקציב יומי מועבר כל ערב (א׳–ה׳, 22:00), תקציב שבועי ביום העבודה האחרון בשבוע, ותקציב חודשי ביום העבודה האחרון בחודש, לפי מה שהמעסיק שלך הגדיר.
 התקנה: `pipx install tenbis-credit` ואז `tenbis-credit setup` — מתחברים עם הקוד שתן ביס שולחת, וזהו.
 הכלי רץ על המחשב שלך בלבד, ופרטי ההתחברות לא נשלחים לשום מקום מלבד תן ביס. לא רשמי ולא קשור לתן ביס.
 
