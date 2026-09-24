@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tenbis-credit"
+dynamic = ["version"]
+description = "Move your unused 10bis budget into 10bis Credit automatically, every work day."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Netanel Barel" }]
+keywords = ["10bis", "tenbis", "meal budget", "automation"]
+classifiers = [
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+]
+dependencies = []
+
+[project.scripts]
+tenbis-credit = "tenbis_credit.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "tenbis_credit.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
