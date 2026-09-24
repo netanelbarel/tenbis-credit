@@ -181,6 +181,37 @@ class Login(unittest.TestCase):
             c.send_code("nobody@example.com")
 
 
+class LoginPrompt(unittest.TestCase):
+    def fake_client(self):
+        c = mock.Mock()
+        c.send_code.return_value = {"sendingMethod": "Phone"}
+        return c
+
+    def test_asks_for_email_with_saved_one_as_default(self):
+        from tenbis_credit import cli
+        c = self.fake_client()
+        answers = iter(["", "12345"])  # Enter keeps the saved email
+        with mock.patch.object(cli, "client", return_value=c), \
+             mock.patch("sys.stdin.isatty", return_value=True), \
+             mock.patch("builtins.input", side_effect=lambda p: (prompts.append(p), next(answers))[1]):
+            prompts = []
+            self.assertTrue(cli.do_login({**CFG, "email": "old@example.com"}, None, None))
+        self.assertIn("[old@example.com]", prompts[0])
+        c.send_code.assert_called_once_with("old@example.com")
+
+    def test_typed_email_replaces_saved_one(self):
+        from tenbis_credit import cli
+        c = self.fake_client()
+        answers = iter(["new@example.com", "12345"])
+        with mock.patch.object(cli, "client", return_value=c), \
+             mock.patch("sys.stdin.isatty", return_value=True), \
+             mock.patch("builtins.input", side_effect=lambda p: next(answers)):
+            cfg = {**CFG, "email": "old@example.com"}
+            cli.do_login(cfg, None, None)
+        c.send_code.assert_called_once_with("new@example.com")
+        self.assertEqual(cfg["email"], "new@example.com")
+
+
 class Config(unittest.TestCase):
     def test_rejects_bad_values(self):
         for bad in ({"mode": "hourly"}, {"days": ["funday"]}, {"time": "25:00"}):

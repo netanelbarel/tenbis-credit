@@ -49,7 +49,11 @@ def do_login(cfg: dict, email: str | None, code: str | None) -> bool:
         c.verify_code(state["email"], state["auth"], code)
         cfg["email"] = state["email"]
     else:
-        email = email or cfg["email"] or ask("Your 10bis email")
+        if not email:
+            # Show the saved email as the default, so it's clear which account is used.
+            email = ask("Your 10bis email", cfg["email"]) if sys.stdin.isatty() else cfg["email"]
+        if not email:
+            sys.exit("No email given. Use: tenbis-credit login --email you@example.com")
         auth = c.send_code(email)
         where = "by SMS" if auth.get("sendingMethod") == "Phone" else "by email"
         if not sys.stdin.isatty():
