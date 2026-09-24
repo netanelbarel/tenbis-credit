@@ -193,7 +193,16 @@ def cmd_uninstall(args, cfg):
 
 # ---------- entry point ----------
 
+def use_utf8_console():
+    """Windows consoles often default to cp1252, which can't print ✓ or ₪ and would crash."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure") \
+                and (stream.encoding or "").lower().replace("-", "") != "utf8":
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None):
+    use_utf8_console()
     p = argparse.ArgumentParser(prog="tenbis-credit",
                                 description="Move your unused 10bis budget into 10bis Credit automatically.")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")

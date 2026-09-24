@@ -8,7 +8,14 @@ on:
 permissions: {}
 
 jobs:
+  # Same macOS/Windows/Linux matrix as CI: nothing is published unless all pass.
+  test:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,9 +32,6 @@ jobs:
         run: |
           VERSION=$(PYTHONPATH=src python -c "import tenbis_credit; print(tenbis_credit.__version__)")
           test "$TAG" = "v$VERSION" || { echo "tag $TAG != version v$VERSION"; exit 1; }
-      - run: python -m unittest discover -s tests
-        env:
-          PYTHONPATH: src
       - run: pip install build twine && python -m build && twine check dist/*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

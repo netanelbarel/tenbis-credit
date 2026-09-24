@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_call: # release.yml runs the full matrix before publishing
 
 permissions:
   contents: read

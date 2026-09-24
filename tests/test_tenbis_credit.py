@@ -1,7 +1,9 @@
+import contextlib
 import datetime as dt
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 import urllib.error
@@ -255,7 +257,8 @@ class LoginPrompt(unittest.TestCase):
              mock.patch("sys.stdin.isatty", return_value=True), \
              mock.patch("builtins.input", side_effect=lambda p: (prompts.append(p), next(answers))[1]):
             prompts = []
-            self.assertTrue(cli.do_login({**CFG, "email": "old@example.com"}, None, None))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertTrue(cli.do_login({**CFG, "email": "old@example.com"}, None, None))
         self.assertIn("[old@example.com]", prompts[0])
         c.send_code.assert_called_once_with("old@example.com")
 
@@ -267,9 +270,23 @@ class LoginPrompt(unittest.TestCase):
              mock.patch("sys.stdin.isatty", return_value=True), \
              mock.patch("builtins.input", side_effect=lambda p: next(answers)):
             cfg = {**CFG, "email": "old@example.com"}
-            cli.do_login(cfg, None, None)
+            with contextlib.redirect_stdout(io.StringIO()):
+                cli.do_login(cfg, None, None)
         c.send_code.assert_called_once_with("new@example.com")
         self.assertEqual(cfg["email"], "new@example.com")
+
+
+class Console(unittest.TestCase):
+    def test_cp1252_console_can_print_symbols(self):
+        """Windows consoles default to cp1252; printing ✓ or ₪ must not crash."""
+        from tenbis_credit import cli
+        raw = io.BytesIO()
+        cp1252 = io.TextIOWrapper(raw, encoding="cp1252")
+        with mock.patch("sys.stdout", cp1252):
+            cli.use_utf8_console()
+            print("✓ Moved 35 ₪")
+            sys.stdout.flush()
+        self.assertEqual(raw.getvalue().decode("utf-8").strip(), "✓ Moved 35 ₪")
 
 
 class Config(unittest.TestCase):
